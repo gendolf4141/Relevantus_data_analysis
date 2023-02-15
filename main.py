@@ -1,7 +1,22 @@
+import time
+
 import pandas as pd
+from openpyxl.styles import PatternFill
 import os
 from openpyxl import load_workbook
 from openpyxl.styles import Font
+
+
+def add_mean_value(dataframe: pd.DataFrame) -> pd.DataFrame:
+    value_for_group = dataframe.iloc[:,0].unique()
+    result_df = pd.DataFrame()
+    for value in value_for_group:
+        df = dataframe[dataframe.iloc[:, 0] == value]
+        mean_value = df.groupby(df.iloc[:, 0]).mean(numeric_only=True).reset_index()
+        if df.shape[0] != 1:
+            result_df = pd.concat([result_df, mean_value])
+        result_df = pd.concat([result_df, df])
+    return result_df
 
 
 def re_spam(analiz_spam: list[list]) -> pd.DataFrame:
@@ -27,8 +42,9 @@ def re_spam(analiz_spam: list[list]) -> pd.DataFrame:
     all_analiz_spam_df = all_analiz_spam_df.merge(count_replay).sort_values(by=['Количество повторений',
                                                                                 'Слово (самая популярная словоформа)'],
                                                                                 ascending=False)
-    all_analiz_spam_df = all_analiz_spam_df[columns]
-    return all_analiz_spam_df
+    all_dataframe = add_mean_value(all_analiz_spam_df[columns])
+
+    return all_dataframe
 
 
 def replay_word(replay_word: list[list]) -> pd.DataFrame:
@@ -51,7 +67,7 @@ def replay_word(replay_word: list[list]) -> pd.DataFrame:
     all_dataframe = all_dataframe.merge(count_replay).sort_values(by=['Количество повторений',
                                                                                 'Слово (самая популярная словоформа)'],
                                                                             ascending=False)
-    all_dataframe = all_dataframe[columns]
+    all_dataframe = add_mean_value(all_dataframe[columns])
     return all_dataframe
 
 
@@ -74,7 +90,8 @@ def add_common_word(row_list: list[list]) -> pd.DataFrame:
     all_dataframe = all_dataframe.merge(count_replay).sort_values(by=['Количество повторений',
                                                                       'Слово (самая популярная словоформа)'],
                                                                   ascending=False)
-    all_dataframe = all_dataframe[columns]
+    all_dataframe = add_mean_value(all_dataframe[columns])
+
     return all_dataframe
 
 
@@ -92,7 +109,7 @@ def dop_word(row_list: list[list]) -> pd.DataFrame:
     all_dataframe = all_dataframe.merge(count_replay).sort_values(by=['Количество повторений',
                                                                       'Дополнительные слова'],
                                                                   ascending=False)
-    all_dataframe = all_dataframe[columns]
+    all_dataframe = add_mean_value(all_dataframe[columns])
     return all_dataframe
 
 
@@ -103,7 +120,7 @@ def title(row_list: list[list]) -> pd.DataFrame:
 
     all_dataframe = pd.DataFrame()
     for url, file in row_list:
-        dataframe = pd.read_excel(file, sheet_name='Доп. слова (конкуренты)')
+        dataframe = pd.read_excel(file, sheet_name='title')
         dataframe['URL'] = url
         all_dataframe = pd.concat([all_dataframe, dataframe])
 
@@ -111,30 +128,35 @@ def title(row_list: list[list]) -> pd.DataFrame:
     all_dataframe = all_dataframe.merge(count_replay).sort_values(by=['Количество повторений',
                                                                       'Можно добавить слова'],
                                                                   ascending=False)
-    all_dataframe = all_dataframe[columns]
+    all_dataframe = add_mean_value(all_dataframe[columns])
     return all_dataframe
 
 
 def wight_row(path):
     wb = load_workbook(path)
+    #
+    # redFill = PatternFill(start_color='FFFF0000',
+    #                       end_color='FFFF0000',
+    #                       fill_type='solid')
+
     for sheet in wb.sheetnames:
         ws = wb[sheet]
-        # pfgjkyztv zxtqrb
-        # ws['c2'] = 'Это большая ячейка'
-        # ws['c3'] = 'Эта ячейка чуть больше'
-        # ws['f2'] = 'Это большая верхняя ячейка'
-        # ws['f3'] = 'Эта ячейка чуть меньше'
         # размер шрифта документа
         font_size = 10
         # словарь с размерами столбцов
         cols_dict = {}
-
+        list_null_value = []
         # проходимся по всем строкам документа
         for row in ws.rows:
+            if row[-1].value is None:
+                list_null_value.append(row[0].row)
             # теперь по ячейкам каждой строки
             for cell in row:
                 # получаем букву текущего столбца
                 letter = cell.column_letter
+                name_letter = cell.coordinate
+                if row[-1].value is None:
+                    ws[name_letter].fill = PatternFill('solid', fgColor="DDDDDD")
                 # если в ячейке записаны данные
                 if cell.value:
                     # устанавливаем в ячейке размер шрифта
@@ -161,13 +183,18 @@ def wight_row(path):
                         # применение новой ширины столбца
                         ws.column_dimensions[cell.column_letter].width = new_width_col
 
-    # пишем электронную таблицу в
-    # файл и смотрим что получилось
+
+        for count in range(len(list_null_value) - 1):
+            min_row = int(list_null_value[count])
+            max_row = int(list_null_value[count+1] - 2)
+            ws.row_dimensions.group(min_row, max_row, hidden=True)
+
     wb.save(path)
 
 
 def main():
     PATH = input("Введите путь: ")
+    print('Формирую отчет...')
     # PATH = r'C:\Users\Gennady\Documents\Relevantus_data_analysis\files\Report_14_02_2023__21_55'
     FILE_RESULT = os.path.join(PATH, 'Result.xlsx')
     RELEVANTUS_DATA_ANALYSIS = os.path.join(PATH, 'Relevantus_data_analysis.xlsx')
@@ -183,6 +210,9 @@ def main():
         title(recommendations).to_excel(writer, sheet_name='Title', index=False)
 
     wight_row(RELEVANTUS_DATA_ANALYSIS)
+    print(f'Отчет сформирован, доступен по следующему пути: {RELEVANTUS_DATA_ANALYSIS}')
+    time.sleep(5)
+
 
 if __name__ == '__main__':
     main()
