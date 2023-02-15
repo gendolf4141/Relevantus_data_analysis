@@ -1,25 +1,35 @@
 import time
 
 import pandas as pd
-from openpyxl.styles import PatternFill
+from openpyxl.styles import PatternFill, Border, Side
 import os
 from openpyxl import load_workbook
 from openpyxl.styles import Font
 
 
 def add_mean_value(dataframe: pd.DataFrame) -> pd.DataFrame:
-    value_for_group = dataframe.iloc[:,0].unique()
+    value_for_group = dataframe.iloc[:, 0].unique()
     result_df = pd.DataFrame()
     for value in value_for_group:
         df = dataframe[dataframe.iloc[:, 0] == value]
         mean_value = df.groupby(df.iloc[:, 0]).mean(numeric_only=True).reset_index()
+        mean_value.iloc[:, 0] = mean_value.iloc[:, 0] + ' (среднее значение)'
+        result_df = pd.concat([result_df, df])
         if df.shape[0] != 1:
             result_df = pd.concat([result_df, mean_value])
-        result_df = pd.concat([result_df, df])
     return result_df
 
 
-def re_spam(analiz_spam: list[list]) -> pd.DataFrame:
+def join_sheet_files(files: list[list], sheet_name: str) -> pd.DataFrame:
+    dataframe = pd.DataFrame()
+    for url, file in files:
+        analiz_spam_df = pd.read_excel(file, sheet_name=sheet_name)
+        analiz_spam_df['URL'] = url
+        dataframe = pd.concat([dataframe, analiz_spam_df])
+    return dataframe
+
+
+def re_spam(url_way_file: list[list]) -> pd.DataFrame:
     columns = ['Слово (самая популярная словоформа)',
                'Повторы у Вас',
                'Минимум повторов (норм.)',
@@ -29,123 +39,85 @@ def re_spam(analiz_spam: list[list]) -> pd.DataFrame:
                'IDF',
                'Количество повторений',
                'URL']
-    all_analiz_spam_df = pd.DataFrame()
-
-    for url, file in analiz_spam:
-        analiz_spam_df = pd.read_excel(file, sheet_name='Переспам')
-        analiz_spam_df['URL'] = url
-        all_analiz_spam_df = pd.concat([all_analiz_spam_df, analiz_spam_df])
-
-    count_replay = all_analiz_spam_df.groupby('Слово (самая популярная словоформа)', as_index=False).agg(
+    dataframe = join_sheet_files(url_way_file, 'Переспам')
+    count_replay = dataframe.groupby('Слово (самая популярная словоформа)', as_index=False).agg(
         {'URL': 'count'}).rename(columns={'URL': 'Количество повторений'})
-
-    all_analiz_spam_df = all_analiz_spam_df.merge(count_replay).sort_values(by=['Количество повторений',
+    dataframe = dataframe.merge(count_replay).sort_values(by=['Количество повторений',
                                                                                 'Слово (самая популярная словоформа)'],
-                                                                                ascending=False)
-    all_dataframe = add_mean_value(all_analiz_spam_df[columns])
-
-    return all_dataframe
+                                                                            ascending=False)
+    return add_mean_value(dataframe[columns])
 
 
-def replay_word(replay_word: list[list]) -> pd.DataFrame:
+def replay_word(url_way_file: list[list]) -> pd.DataFrame:
     columns = ['Слово (самая популярная словоформа)',
                'Повторы у Вас',
                'Минимум повторов (норм.)',
                'Максимум повторов (норм.)',
                'Количество повторений',
                'URL']
-
-    all_dataframe = pd.DataFrame()
-    for url, file in replay_word:
-        dataframe = pd.read_excel(file, sheet_name='Повторы слов')
-        dataframe['URL'] = url
-        all_dataframe = pd.concat([all_dataframe, dataframe])
-
-    count_replay = all_dataframe.groupby('Слово (самая популярная словоформа)', as_index=False).agg(
+    dataframe = join_sheet_files(url_way_file, 'Повторы слов')
+    count_replay = dataframe.groupby('Слово (самая популярная словоформа)', as_index=False).agg(
         {'URL': 'count'}).rename(columns={'URL': 'Количество повторений'})
-
-    all_dataframe = all_dataframe.merge(count_replay).sort_values(by=['Количество повторений',
-                                                                                'Слово (самая популярная словоформа)'],
-                                                                            ascending=False)
-    all_dataframe = add_mean_value(all_dataframe[columns])
-    return all_dataframe
+    dataframe = dataframe.merge(count_replay).sort_values(by=['Количество повторений',
+                                                                      'Слово (самая популярная словоформа)'],
+                                                                  ascending=False)
+    return add_mean_value(dataframe[columns])
 
 
-def add_common_word(row_list: list[list]) -> pd.DataFrame:
+def add_common_word(url_way_file: list[list]) -> pd.DataFrame:
     columns = ['Слово (самая популярная словоформа)',
                'Важные словоформы',
                'Все словоформы у конкурентов',
                'Количество повторений',
                'URL']
-
-    all_dataframe = pd.DataFrame()
-    for url, file in row_list:
-        dataframe = pd.read_excel(file, sheet_name='Добавить важные слова')
-        dataframe['URL'] = url
-        all_dataframe = pd.concat([all_dataframe, dataframe])
-
-    count_replay = all_dataframe.groupby('Слово (самая популярная словоформа)', as_index=False).agg(
+    dataframe = join_sheet_files(url_way_file, 'Добавить важные слова')
+    count_replay = dataframe.groupby('Слово (самая популярная словоформа)', as_index=False).agg(
         {'URL': 'count'}).rename(columns={'URL': 'Количество повторений'})
-
-    all_dataframe = all_dataframe.merge(count_replay).sort_values(by=['Количество повторений',
+    dataframe = dataframe.merge(count_replay).sort_values(by=['Количество повторений',
                                                                       'Слово (самая популярная словоформа)'],
                                                                   ascending=False)
-    all_dataframe = add_mean_value(all_dataframe[columns])
-
-    return all_dataframe
+    return add_mean_value(dataframe[columns])
 
 
-def dop_word(row_list: list[list]) -> pd.DataFrame:
+def dop_word(url_way_file: list[list]) -> pd.DataFrame:
     columns = ['Дополнительные слова',
                'Количество повторений',
                'URL']
 
-    all_dataframe = pd.DataFrame()
-    for url, file in row_list:
-        dataframe = pd.read_excel(file, sheet_name='Доп. слова')
-        dataframe['URL'] = url
-        all_dataframe = pd.concat([all_dataframe, dataframe])
-    count_replay = all_dataframe.groupby('Дополнительные слова', as_index=False).agg({'URL': 'count'}).rename(columns={'URL': 'Количество повторений'})
-    all_dataframe = all_dataframe.merge(count_replay).sort_values(by=['Количество повторений',
+    dataframe = join_sheet_files(url_way_file, 'Доп. слова')
+    count_replay = dataframe.groupby('Дополнительные слова',
+                                         as_index=False).agg({'URL': 'count'}).rename(
+        columns={'URL': 'Количество повторений'})
+    dataframe = dataframe.merge(count_replay).sort_values(by=['Количество повторений',
                                                                       'Дополнительные слова'],
                                                                   ascending=False)
-    all_dataframe = add_mean_value(all_dataframe[columns])
-    return all_dataframe
+    return add_mean_value(dataframe[columns])
 
 
-def title(row_list: list[list]) -> pd.DataFrame:
+def title(url_way_file: list[list]) -> pd.DataFrame:
     columns = ['Можно добавить слова',
-               'URL',
-               'Количество повторений']
-
-    all_dataframe = pd.DataFrame()
-    for url, file in row_list:
-        dataframe = pd.read_excel(file, sheet_name='title')
-        dataframe['URL'] = url
-        all_dataframe = pd.concat([all_dataframe, dataframe])
-
-    count_replay = all_dataframe.groupby('Можно добавить слова', as_index=False).agg({'URL': 'count'}).rename(columns={'URL': 'Количество повторений'})
-    all_dataframe = all_dataframe.merge(count_replay).sort_values(by=['Количество повторений',
+               'Количество повторений',
+               'URL']
+    dataframe = join_sheet_files(url_way_file, 'title')
+    count_replay = dataframe.groupby('Можно добавить слова', as_index=False).agg({'URL': 'count'}).rename(
+        columns={'URL': 'Количество повторений'})
+    dataframe = dataframe.merge(count_replay).sort_values(by=['Количество повторений',
                                                                       'Можно добавить слова'],
                                                                   ascending=False)
-    all_dataframe = add_mean_value(all_dataframe[columns])
-    return all_dataframe
+    return add_mean_value(dataframe[columns])
 
 
 def wight_row(path):
     wb = load_workbook(path)
-    #
-    # redFill = PatternFill(start_color='FFFF0000',
-    #                       end_color='FFFF0000',
-    #                       fill_type='solid')
+    # размер шрифта документа
+    font_size = 10
 
     for sheet in wb.sheetnames:
         ws = wb[sheet]
-        # размер шрифта документа
-        font_size = 10
         # словарь с размерами столбцов
         cols_dict = {}
-        list_null_value = []
+        list_null_value = [1]
+
         # проходимся по всем строкам документа
         for row in ws.rows:
             if row[-1].value is None:
@@ -155,8 +127,17 @@ def wight_row(path):
                 # получаем букву текущего столбца
                 letter = cell.column_letter
                 name_letter = cell.coordinate
+
+                thins = Side(border_style="medium", color="000000")
+                ws[name_letter].border = Border(left=thins, right=thins)
+
                 if row[-1].value is None:
-                    ws[name_letter].fill = PatternFill('solid', fgColor="DDDDDD")
+                    ws[name_letter].fill = PatternFill('solid', fgColor="F5FFFA")
+                    ws[name_letter].border = Border(top=thins, bottom=thins, left=thins, right=thins)
+                if cell.row == 1:
+                    ws[name_letter].fill = PatternFill('solid', fgColor="9FB6CD")
+                    ws[name_letter].border = Border(top=thins, bottom=thins, left=thins, right=thins)
+
                 # если в ячейке записаны данные
                 if cell.value:
                     # устанавливаем в ячейке размер шрифта
@@ -183,19 +164,18 @@ def wight_row(path):
                         # применение новой ширины столбца
                         ws.column_dimensions[cell.column_letter].width = new_width_col
 
-
         for count in range(len(list_null_value) - 1):
-            min_row = int(list_null_value[count])
-            max_row = int(list_null_value[count+1] - 2)
+            min_row = int(list_null_value[count] + 1)
+            max_row = int(list_null_value[count + 1] - 1)
             ws.row_dimensions.group(min_row, max_row, hidden=True)
 
     wb.save(path)
 
 
 def main():
-    PATH = input("Введите путь: ")
+    # PATH = input("Введите путь: ")
     print('Формирую отчет...')
-    # PATH = r'C:\Users\Gennady\Documents\Relevantus_data_analysis\files\Report_14_02_2023__21_55'
+    PATH = r'C:\Users\Gennady\Documents\Relevantus_data_analysis\files\Report_14_02_2023__21_55'
     FILE_RESULT = os.path.join(PATH, 'Result.xlsx')
     RELEVANTUS_DATA_ANALYSIS = os.path.join(PATH, 'Relevantus_data_analysis.xlsx')
     result_df = pd.read_excel(FILE_RESULT, sheet_name='Результаты')
@@ -210,7 +190,7 @@ def main():
         title(recommendations).to_excel(writer, sheet_name='Title', index=False)
 
     wight_row(RELEVANTUS_DATA_ANALYSIS)
-    print(f'Отчет сформирован, доступен по следующему пути: {RELEVANTUS_DATA_ANALYSIS}')
+    print(f'Отчет сформирован, доступен по следующему пути: \n{RELEVANTUS_DATA_ANALYSIS}')
     time.sleep(5)
 
 
